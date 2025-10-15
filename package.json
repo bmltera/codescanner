@@ -1,0 +1,71 @@
+{
+  "name": "codebase-dependency-security-analyzer",
+  "displayName": "Codebase Dependency & Security Analyzer",
+  "description": "Scans your codebase for dependency vulnerabilities and security issues using ChatGPT.",
+  "version": "0.0.1",
+  "publisher": "your-publisher-name",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other",
+    "Security"
+  ],
+  "activationEvents": [
+    "onCommand:extension.scanCodebase"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "extension.scanCodebase",
+        "title": "Scan Codebase for Vulnerabilities"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codebaseAnalyzerActivityBar",
+          "title": "Security Analyzer",
+          "icon": "resources/lock.svg"
+        }
+      ]
+    },
+    "views": {
+      "codebaseAnalyzerActivityBar": [
+        {
+          "id": "securityScanResultsView",
+          "name": "Security Scan Results"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Codebase Dependency & Security Analyzer",
+      "properties": {
+        "codebaseAnalyzer.openAIApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API Key for ChatGPT analysis."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "1.70.0",
+    "typescript": "^4.7.0",
+    "vscode-test": "^1.6.0"
+  },
+  "dependencies": {
+    "axios": "^1.12.2"
+  }
+}
