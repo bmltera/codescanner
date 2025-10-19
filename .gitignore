@@ -1,4 +1,4 @@
-# Node.js dependencies
+ # Node.js dependencies
 node_modules/
 
 # Compiled output
@@ -25,3 +25,6 @@ Thumbs.db
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Test files for plugin
+testfiles/
