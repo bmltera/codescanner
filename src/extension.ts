@@ -136,8 +136,9 @@ class SecurityScanResultsProvider implements vscode.TreeDataProvider<vscode.Tree
 class SecurityScanWebviewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'securityScanWebview';
     private _view?: vscode.WebviewView;
+    private _latestFindings: any[] = [];
 
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+    constructor(private readonly _extensionUri: vscode.Uri, private readonly _context: vscode.ExtensionContext) {}
 
     resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -150,6 +151,23 @@ class SecurityScanWebviewProvider implements vscode.WebviewViewProvider {
             localResourceRoots: [this._extensionUri]
         };
         webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
+
+        // Restore findings if available
+        if (this._latestFindings && this._latestFindings.length > 0) {
+            this.setFindings(this._latestFindings);
+        } else {
+            // Try to restore from globalState (Memento)
+            const saved = this._context.globalState.get<any[]>("securityScanFindings");
+            if (saved && Array.isArray(saved) && saved.length > 0) {
+                this._latestFindings = saved;
+                this.setFindings(saved);
+            }
+        }
+        // Hydrate full UI state from globalState (for VS Code restarts)
+        const fullState = this._context.globalState.get<any>("securityAnalyzer:data");
+        if (fullState) {
+            webviewView.webview.postMessage({ type: "hydrate", state: fullState });
+        }
 
         // Listen for messages from the webview
         webviewView.webview.onDidReceiveMessage(async (message) => {
@@ -167,17 +185,29 @@ class SecurityScanWebviewProvider implements vscode.WebviewViewProvider {
     private setScanning(scanning: boolean) {
         if (this._view) {
             this._view.webview.postMessage({ type: 'scanning', scanning });
+            // Save full UI state (scanning + findings) to globalState for VS Code restarts
+            this.saveFullState(scanning, this._latestFindings);
         }
     }
 
     private setFindings(findings: any[]) {
+        this._latestFindings = findings;
+        // Save to globalState for persistence
+        this._context.globalState.update("securityScanFindings", findings);
         if (this._view) {
             this._view.webview.postMessage({ type: 'findings', findings });
+            // Save full UI state (scanning + findings) to globalState for VS Code restarts
+            this.saveFullState(false, findings);
         }
     }
 
+    private saveFullState(scanning: boolean, findings: any[]) {
+        const state = { scanning, findings };
+        this._context.globalState.update("securityAnalyzer:data", state);
+    }
+
     private getHtmlForWebview(webview: vscode.Webview): string {
-        // UI: Start Scan button, spinner, findings list
+        // UI: Start Scan button, spinner, findings list, with state persistence
         return `
             <!DOCTYPE html>
             <html lang="en">
@@ -208,7 +238,73 @@ class SecurityScanWebviewProvider implements vscode.WebviewViewProvider {
                     const startBtn = document.getElementById('startScan');
                     const findingsDiv = document.getElementById('findings');
                     const spinner = document.getElementById('spinner');
+
+                    // --- State persistence helpers
+                    function getUIState() {
+                        return {
+                            scanning: spinner.style.display === 'inline-block',
+                            findings: window._currentFindings || []
+                        };
+                    }
+                    function restoreUI(state) {
+                        if (!state) return;
+                        // Restore spinner
+                        if (state.scanning) {
+                            spinner.style.display = 'inline-block';
+                            findingsDiv.textContent = 'Scanning for vulnerabilities...';
+                            startBtn.disabled = true;
+                        } else {
+                            spinner.style.display = 'none';
+                            startBtn.disabled = false;
+                        }
+                        // Restore findings
+                        window._currentFindings = state.findings || [];
+                        renderFindings(window._currentFindings);
+                    }
+                    function persist() {
+                        vscode.setState(getUIState());
+                    }
+                    function renderFindings(findings) {
+                        window._currentFindings = findings;
+                        if (!findings || findings.length === 0) {
+                            findingsDiv.textContent = 'No vulnerabilities found.';
+                            persist();
+                            return;
+                        }
+                        findingsDiv.innerHTML = '';
+                        findings.forEach(f => {
+                            const riskClass = f.risk_score === 'high' ? 'risk-high' : (f.risk_score === 'medium' ? 'risk-medium' : 'risk-low');
+                            const el = document.createElement('div');
+                            el.className = 'finding';
+                            el.innerHTML = \`
+                                <b class="\${riskClass}">\${f.vulnerability} (<span>\${f.risk_score}</span>)</b>
+                                <div class="details">
+                                    <div><b>File:</b> \${f.filename}</div>
+                                    <div><b>\${(f.lines_affected && f.lines_affected.length === 1) ? "Affected line:" : "Affected lines:"}</b> \${(f.lines_affected || []).join(', ')}</div>
+                                    <div><b>Explanation:</b> \${f.explanation}</div>
+                                    <div><b>Recommendation:</b> \${f.recommendation}</div>
+                                    <button class="open-file-btn">Open File</button>
+                                </div>
+                            \`;
+                            el.querySelector('.open-file-btn').addEventListener('click', () => {
+                                vscode.postMessage({ command: 'openFile', filename: f.filename, lines: f.lines_affected });
+                            });
+                            findingsDiv.appendChild(el);
+                        });
+                        persist();
+                    }
+
+                    // --- Restore state on load
+                    const saved = vscode.getState && vscode.getState();
+                    if (saved) {
+                        restoreUI(saved);
+                    }
+
                     startBtn.addEventListener('click', () => {
+                        spinner.style.display = 'inline-block';
+                        findingsDiv.textContent = 'Scanning for vulnerabilities...';
+                        startBtn.disabled = true;
+                        persist();
                         vscode.postMessage({ command: 'startScan' });
                     });
 
@@ -223,31 +319,11 @@ class SecurityScanWebviewProvider implements vscode.WebviewViewProvider {
                                 spinner.style.display = 'none';
                                 startBtn.disabled = false;
                             }
+                            persist();
                         } else if (msg.type === 'findings') {
-                            if (!msg.findings || msg.findings.length === 0) {
-                                findingsDiv.textContent = 'No vulnerabilities found.';
-                                return;
-                            }
-                            findingsDiv.innerHTML = '';
-                            msg.findings.forEach(f => {
-                                const riskClass = f.risk_score === 'high' ? 'risk-high' : (f.risk_score === 'medium' ? 'risk-medium' : 'risk-low');
-                                const el = document.createElement('div');
-                                el.className = 'finding';
-                                el.innerHTML = \`
-                                    <b class="\${riskClass}">\${f.vulnerability} (<span>\${f.risk_score}</span>)</b>
-                                    <div class="details">
-                                        <div><b>File:</b> \${f.filename}</div>
-                                        <div><b>\${(f.lines_affected && f.lines_affected.length === 1) ? "Affected line:" : "Affected lines:"}</b> \${(f.lines_affected || []).join(', ')}</div>
-                                        <div><b>Explanation:</b> \${f.explanation}</div>
-                                        <div><b>Recommendation:</b> \${f.recommendation}</div>
-                                        <button class="open-file-btn">Open File</button>
-                                    </div>
-                                \`;
-                                el.querySelector('.open-file-btn').addEventListener('click', () => {
-                                    vscode.postMessage({ command: 'openFile', filename: f.filename, lines: f.lines_affected });
-                                });
-                                findingsDiv.appendChild(el);
-                            });
+                            renderFindings(msg.findings);
+                        } else if (msg.type === 'hydrate' && msg.state) {
+                            restoreUI(msg.state);
                         }
                     });
                 </script>
@@ -330,11 +406,16 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerTreeDataProvider('securityScanResultsView', treeDataProvider);
 
     // Register the webview provider
-    const webviewProvider = new SecurityScanWebviewProvider(context.extensionUri);
+    const webviewProvider = new SecurityScanWebviewProvider(context.extensionUri, context);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             SecurityScanWebviewProvider.viewType,
-            webviewProvider
+            webviewProvider,
+            {
+                webviewOptions: {
+                    retainContextWhenHidden: true
+                }
+            }
         )
     );
 
@@ -342,7 +423,15 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.revealFinding', async (filename: string, lines: number[]) => {
             try {
-                const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filename));
+                let absPath = filename;
+                // If not absolute, resolve relative to workspace root
+                if (!require('path').isAbsolute(filename)) {
+                    const wsFolders = vscode.workspace.workspaceFolders;
+                    if (wsFolders && wsFolders.length > 0) {
+                        absPath = require('path').join(wsFolders[0].uri.fsPath, filename);
+                    }
+                }
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absPath));
                 const editor = await vscode.window.showTextDocument(doc, { preview: false });
                 if (lines && lines.length > 0) {
                     const line = Math.max(0, lines[0] - 1);
