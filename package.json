@@ -14,7 +14,6 @@
   "activationEvents": [
     "onCommand:extension.scanCodebase",
     "onCommand:extension.startScan",
-    "onView:securityScanResultsView",
     "onView:codebaseAnalyzerActivityBar",
     "onView:securityScanWebview"
   ],
@@ -41,10 +40,6 @@
     },
     "views": {
       "codebaseAnalyzerActivityBar": [
-        {
-          "id": "securityScanResultsView",
-          "name": "Security Scan Results"
-        },
         {
           "id": "securityScanWebview",
           "name": "Security Scan",
