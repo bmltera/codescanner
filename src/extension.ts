@@ -286,6 +286,7 @@ class SecurityScanWebviewProvider implements vscode.WebviewViewProvider {
             + '</b> ' + (f.lines_affected || []).join(', ') + '</div>' +
             '<div><b>Explanation:</b> ' + f.explanation + '</div>' +
             '<div><b>Recommendation:</b> ' + f.recommendation + '</div>' +
+            (f.reference ? '<div><b>Reference:</b> <a href="' + f.reference + '" target="_blank" rel="noopener noreferrer">' + f.reference + '</a></div>' : '') +
             '<button class=\"open-file-btn\">Open File</button>' +
           '</div>';
 
