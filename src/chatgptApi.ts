@@ -9,6 +9,8 @@ export async function analyzeCodeWithChatGPT(code: string, filePath: string): Pr
 
     const prompt = `You are a security expert. Analyze the following code for security vulnerabilities and risks.
 
+Do NOT wrap your response in triple backticks or any Markdown formatting. Output ONLY raw JSON.
+
 You MUST classify each finding using ONE of the predefined vulnerability types below. 
 For each finding, you MUST:
 - use the vulnerability name EXACTLY as written
@@ -89,7 +91,7 @@ ${code}
                 { role: 'system', content: 'You are a security expert.' },
                 { role: 'user', content: prompt }
             ],
-            max_tokens: 700
+            max_tokens: 2048
         },
         {
             headers: {
@@ -99,7 +101,16 @@ ${code}
         }
     );
 
-    const result = response.data.choices?.[0]?.message?.content;
+    const cleanJson = (text: string): string => {
+        // Remove Markdown code block markers if present
+        return text
+            .replace(/^\s*```(?:json)?\s*/i, '')
+            .replace(/\s*```\s*$/i, '')
+            .trim();
+    };
+
+    const rawResult = response.data.choices?.[0]?.message?.content;
+    const result = rawResult ? cleanJson(rawResult) : '';
     return result || 'No analysis result returned.';
 }
 
@@ -110,6 +121,8 @@ export async function analyzeDependenciesWithChatGPT(dependencies: string[]): Pr
     }
 
     const prompt = `You are a security expert. Analyze the following list of dependencies for known or likely security vulnerabilities.
+
+Do NOT wrap your response in triple backticks or any Markdown formatting. Output ONLY raw JSON.
 
 You MUST classify each dependency-related finding using ONE of the same predefined vulnerability types below, when applicable (especially "Use of Vulnerable or Outdated Components"). 
 For each finding, you MUST:
@@ -191,7 +204,7 @@ ${dependencies.join('\n')}
                 { role: 'system', content: 'You are a security expert.' },
                 { role: 'user', content: prompt }
             ],
-            max_tokens: 500
+            max_tokens: 2048
         },
         {
             headers: {
@@ -201,6 +214,15 @@ ${dependencies.join('\n')}
         }
     );
 
-    const result = response.data.choices?.[0]?.message?.content;
+    const cleanJson = (text: string): string => {
+        // Remove Markdown code block markers if present
+        return text
+            .replace(/^\s*```(?:json)?\s*/i, '')
+            .replace(/\s*```\s*$/i, '')
+            .trim();
+    };
+
+    const rawResult = response.data.choices?.[0]?.message?.content;
+    const result = rawResult ? cleanJson(rawResult) : '';
     return result || 'No analysis result returned.';
 }
