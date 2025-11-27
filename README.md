@@ -70,11 +70,6 @@ To generate a `.vsix` file (the distributable package for your VSCode extension)
 
 - Analysis is limited by ChatGPT's context window (token limit).
 - For large codebases, only a subset of files may be analyzed at a time.
-- The extension relies on ChatGPT's knowledge and may not detect all issues.
-
-## Contributing
-
-Pull requests and issues are welcome!
 
 ## License
 
